@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Dibutuhkan untuk MethodChannel
+import 'package:flutter/services.dart'; 
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -37,7 +37,7 @@ class CueSyncApp extends StatelessWidget {
 }
 
 // ==========================================
-// 1. HALAMAN PILIH PERAN (Anti Terpotong)
+// 1. HALAMAN PILIH PERAN
 // ==========================================
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -57,13 +57,13 @@ class RoleSelectionScreen extends StatelessWidget {
           child: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
-              // Disusun ke bawah agar pas & proporsional di HP / Mac
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text(
                     'CUESYNC PRO',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.black, letterSpacing: 2, color: Colors.white),
+                    // ERROR FIXED: FontWeight.black diubah menjadi FontWeight.w900
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white), 
                   ),
                   const SizedBox(height: 10),
                   const Text(
@@ -345,7 +345,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 3. HALAMAN CLIENT (ANDROID MC) - Sempurna Tengah & Responsif
+// 3. HALAMAN CLIENT (ANDROID MC)
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -354,7 +354,7 @@ class ClientScreen extends StatefulWidget {
 }
 
 class _ClientScreenState extends State<ClientScreen> {
-  static const _platform = MethodChannel('com.example.cuesync/vibration'); // Pemanggilan getaran native
+  static const _platform = MethodChannel('com.example.cuesync/vibration'); 
   WebSocketChannel? _channel;
   String _status = "idle"; 
   String _text = "Menunggu FOH...";
@@ -395,7 +395,6 @@ class _ClientScreenState extends State<ClientScreen> {
       _channel!.stream.listen((message) async {
         final data = jsonDecode(message);
         
-        // Memaksa getaran Hardware Android bekerja selama 1,2 detik (Pasti Terasa!)
         if (data['command'] == 'vibrate') {
           try {
             await _platform.invokeMethod('vibrate', {'duration': 1200});
@@ -499,7 +498,6 @@ class _ClientScreenState extends State<ClientScreen> {
           gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight),
         ),
         child: SafeArea(
-          // Memastikan letak horizontal & vertikal berada tepat di tengah tanpa bisa tergeser atau terpotong
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SingleChildScrollView(
@@ -510,11 +508,10 @@ class _ClientScreenState extends State<ClientScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center, // Kunci Rata Tengah Vertikal
-                        crossAxisAlignment: CrossAxisAlignment.center, // Kunci Rata Tengah Horizontal
+                        mainAxisAlignment: MainAxisAlignment.center, 
+                        crossAxisAlignment: CrossAxisAlignment.center, 
                         children: [
                           const Spacer(flex: 3),
-                          // Script Text (Auto resize + centered)
                           Center(
                             child: Text(
                               _text,
@@ -533,14 +530,14 @@ class _ClientScreenState extends State<ClientScreen> {
                           
                           if (_timeText.isNotEmpty) ...[
                             const Spacer(flex: 1),
-                            // Countdown Timer (Large, Perfectly Centered)
                             Center(
                               child: Text(
                                 _timeText,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
+                                  // ERROR FIXED: FontWeight.black diubah menjadi FontWeight.w900
                                   fontSize: 84, 
-                                  fontWeight: FontWeight.black, 
+                                  fontWeight: FontWeight.w900, 
                                   color: _getTimerColor(),
                                   fontFeatures: const [FontFeature.tabularFigures()],
                                   shadows: [
