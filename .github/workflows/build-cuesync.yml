@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-13
             target: macos
             artifact_name: CueSync-Mac
             artifact_path: build/macos/Build/Products/Release/CueSync.app
