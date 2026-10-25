@@ -2,11 +2,12 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Untuk fitur Getar (Haptic)
+import 'package:flutter/services.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // Untuk fitur layar nyala terus
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,8 +19,16 @@ class CueSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CueSync',
-      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+      title: 'CueSync Pro',
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 5,
+          ),
+        ),
+      ),
       home: const RoleSelectionScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -35,22 +44,42 @@ class RoleSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('CueSync - Select Role'), backgroundColor: Colors.grey[900]),
-      body: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0xFF1E1E1E), Color(0xFF000000)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        ),
+        child: Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildRoleCard(context, 'MASTER FOH\n(Mac / Windows)', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
+              const SizedBox(width: 40),
+              _buildRoleCard(context, 'CLIENT MC\n(Android)', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleCard(BuildContext context, String title, IconData icon, Color color, Widget screen) {
+    return InkWell(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen)),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 250,
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          border: Border.all(color: color.withOpacity(0.5), width: 2),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(40), backgroundColor: Colors.blueAccent),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MasterScreen())),
-              child: const Text('MASTER FOH\n(Mac / Windows)', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, color: Colors.white)),
-            ),
-            const SizedBox(width: 40),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(40), backgroundColor: Colors.orangeAccent),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientScreen())),
-              child: const Text('CLIENT MC\n(Android)', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, color: Colors.white)),
-            ),
+            Icon(icon, size: 80, color: color),
+            const SizedBox(height: 20),
+            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
       ),
@@ -73,7 +102,6 @@ class _MasterScreenState extends State<MasterScreen> {
   String _localIp = 'Mencari IP...';
   String _currentStatus = "idle";
   
-  // Ubah controller agar bisa menerima teks panjang/banyak baris
   final TextEditingController _cueController = TextEditingController(text: "STANDBY MC");
   final TextEditingController _timerController = TextEditingController(text: "5");
 
@@ -101,7 +129,7 @@ class _MasterScreenState extends State<MasterScreen> {
   void _startServer() async {
     var handler = webSocketHandler((webSocket) {
       _clients.add(webSocket);
-      _sendCurrentState(); 
+      _sendData("update");
       webSocket.stream.listen((message) {}, onDone: () => _clients.remove(webSocket));
     });
     _server = await shelf_io.serve(handler, '0.0.0.0', 8080);
@@ -112,11 +140,10 @@ class _MasterScreenState extends State<MasterScreen> {
     if (minutes > 0) {
       _countdownTimer?.cancel();
       _timeInSeconds = minutes * 60;
-      
       _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (_timeInSeconds > 0) {
           setState(() => _timeInSeconds--);
-          _sendCurrentState(); 
+          _sendData("update");
         } else {
           timer.cancel();
         }
@@ -127,7 +154,7 @@ class _MasterScreenState extends State<MasterScreen> {
   void _stopTimer() {
     _countdownTimer?.cancel();
     setState(() => _timeInSeconds = 0);
-    _sendCurrentState();
+    _sendData("update");
   }
 
   String get _formattedTime {
@@ -139,15 +166,17 @@ class _MasterScreenState extends State<MasterScreen> {
 
   void _changeStatus(String status) {
     _currentStatus = status;
-    _sendCurrentState();
+    _sendData("update");
   }
 
-  void _sendCurrentState() {
+  // Fungsi pengiriman data (Bisa Teks/Status, Bisa Perintah Getar)
+  void _sendData(String command) {
     final message = jsonEncode({
       "status": _currentStatus,
       "text": _cueController.text,
       "time": _formattedTime,
-      "timeRaw": _timeInSeconds 
+      "timeRaw": _timeInSeconds,
+      "command": command // 'update' atau 'vibrate'
     });
     for (var client in _clients) {
       client.sink.add(message);
@@ -164,74 +193,124 @@ class _MasterScreenState extends State<MasterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('FOH Master - IP: $_localIp'), backgroundColor: Colors.grey[900]),
+      appBar: AppBar(
+        title: Text('FOH Master - IP: $_localIp', style: const TextStyle(fontWeight: FontWeight.bold)), 
+        backgroundColor: const Color(0xFF1E1E1E),
+        elevation: 0,
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // Text Field dibuat mendukung teks panjang / script MC
+            // Baris Input Script
             Expanded(
-              child: TextField(
-                controller: _cueController,
-                maxLines: null, // Bebas berapa baris pun
-                expands: true,
-                style: const TextStyle(fontSize: 24),
-                decoration: const InputDecoration(labelText: 'Ketik Script / Instruksi MC di sini', border: OutlineInputBorder()),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                ),
+                child: TextField(
+                  controller: _cueController,
+                  maxLines: null,
+                  expands: true,
+                  style: const TextStyle(fontSize: 26, color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Ketik Script / Instruksi MC',
+                    labelStyle: TextStyle(color: Colors.grey),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(20),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 20),
             
+            // Baris Timer & Tombol Getar
             Row(
               children: [
                 Expanded(
+                  flex: 2,
                   child: TextField(
                     controller: _timerController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 24),
-                    decoration: const InputDecoration(labelText: 'Durasi (Menit)', border: OutlineInputBorder()),
+                    style: const TextStyle(fontSize: 22),
+                    decoration: InputDecoration(
+                      labelText: 'Menit',
+                      filled: true,
+                      fillColor: const Color(0xFF2A2A2A),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: _startTimer,
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(20), backgroundColor: Colors.blueAccent),
-                  child: const Text('Start Timer', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 15),
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.play_arrow, color: Colors.white),
+                    label: const Text('START TIMER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    onPressed: _startTimer,
+                  ),
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: _stopTimer,
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(20), backgroundColor: Colors.redAccent),
-                  child: const Text('Stop Timer', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 15),
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.stop, color: Colors.white),
+                    label: const Text('STOP TIMER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    onPressed: _stopTimer,
+                  ),
+                ),
+                const SizedBox(width: 15),
+                // FITUR BARU: TOMBOL GETAR MANUAL
+                Expanded(
+                  flex: 4,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.vibration, color: Colors.white),
+                    label: const Text('GETARKAN HP MC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    onPressed: () => _sendData("vibrate"), // Tembak perintah getar
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             
+            // Baris Status GO / STANDBY
             Row(
               children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _changeStatus("standby"),
-                    child: Container(height: 120, color: Colors.yellow[700], child: const Center(child: Text("STANDBY", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.black)))),
-                  ),
-                ),
+                _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
                 const SizedBox(width: 20),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _changeStatus("go"),
-                    child: Container(height: 120, color: Colors.greenAccent[700], child: const Center(child: Text("GO", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.black)))),
-                  ),
-                ),
+                _buildStatusButton("GO", "go", Colors.greenAccent[700]!, Colors.black),
                 const SizedBox(width: 20),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _changeStatus("idle"),
-                    child: Container(height: 120, color: Colors.grey[800], child: const Center(child: Text("IDLE / BLACK", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.white)))),
-                  ),
-                ),
+                _buildStatusButton("IDLE / BLACK", "idle", const Color(0xFF333333), Colors.white),
               ],
             )
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusButton(String title, String status, Color bgColor, Color textColor) {
+    bool isActive = _currentStatus == status;
+    return Expanded(
+      child: InkWell(
+        onTap: () => _changeStatus(status),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          height: 120,
+          decoration: BoxDecoration(
+            color: bgColor.withOpacity(isActive ? 1.0 : 0.4),
+            borderRadius: BorderRadius.circular(15),
+            border: isActive ? Border.all(color: Colors.white, width: 3) : null,
+            boxShadow: isActive ? [BoxShadow(color: bgColor.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)] : [],
+          ),
+          child: Center(
+            child: Text(title, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
+          ),
         ),
       ),
     );
@@ -253,76 +332,128 @@ class _ClientScreenState extends State<ClientScreen> {
   String _text = "Menunggu FOH...";
   String _timeText = "";
   int _timeRaw = 0;
+  bool _isConnected = false;
   
   final TextEditingController _ipController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable(); // Nyalakan penahan layar (Background Running)
+    WakelockPlus.enable(); // Layar nyala terus di Android 10-16
+    _loadLastIp();
   }
 
-  void _connect() {
-    if (_ipController.text.isEmpty) return;
-    final wsUrl = Uri.parse('ws://${_ipController.text}:8080');
-    _channel = WebSocketChannel.connect(wsUrl);
-    _channel!.stream.listen((message) {
-      final data = jsonDecode(message);
-      
-      // Logika Getar: Jika Mac menekan Standby atau Go, HP bergetar
-      if (data['status'] != _status && (data['status'] == 'standby' || data['status'] == 'go')) {
-        HapticFeedback.vibrate();
-      }
+  // Muat IP terakhir dan otomatis sambung
+  Future<void> _loadLastIp() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? lastIp = prefs.getString('last_ip');
+    if (lastIp != null && lastIp.isNotEmpty) {
+      _ipController.text = lastIp;
+      _connect(); // Auto-reconnect
+    }
+  }
 
-      setState(() {
-        _status = data['status'];
-        _text = data['text'];
-        _timeText = data['time'] ?? "";
-        _timeRaw = data['timeRaw'] ?? 0;
-      });
+  void _connect() async {
+    if (_ipController.text.isEmpty) return;
+    
+    // Simpan IP untuk sesi berikutnya
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_ip', _ipController.text);
+
+    try {
+      final wsUrl = Uri.parse('ws://${_ipController.text}:8080');
+      _channel = WebSocketChannel.connect(wsUrl);
+      
+      setState(() => _isConnected = true);
+
+      _channel!.stream.listen((message) {
+        final data = jsonDecode(message);
+        
+        // Logika Getar Spesifik dari tombol Master
+        if (data['command'] == 'vibrate') {
+          HapticFeedback.heavyImpact();
+          Future.delayed(const Duration(milliseconds: 200), () => HapticFeedback.heavyImpact());
+          Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.heavyImpact());
+        }
+
+        setState(() {
+          _status = data['status'] ?? _status;
+          _text = data['text'] ?? _text;
+          _timeText = data['time'] ?? _timeText;
+          _timeRaw = data['timeRaw'] ?? _timeRaw;
+        });
+      }, 
+      onDone: _handleDisconnect, 
+      onError: (_) => _handleDisconnect());
+    } catch (e) {
+      _handleDisconnect();
+    }
+  }
+
+  // Auto Reconnect Stabilizer
+  void _handleDisconnect() {
+    if (!mounted) return;
+    setState(() {
+      _isConnected = false;
+      _text = "Mencoba Reconnect...";
+      _status = "idle";
+    });
+    
+    // Coba konek ulang setiap 3 detik di background
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && !_isConnected) _connect();
     });
   }
 
-  Color _getBgColor() {
-    if (_status == "standby") return Colors.yellow[700]!;
-    if (_status == "go") return Colors.greenAccent[700]!;
-    return Colors.black;
+  // Tampilan Warna Halus (Gradient)
+  List<Color> _getBgColors() {
+    if (_status == "standby") return [Colors.orange, Colors.yellow[700]!];
+    if (_status == "go") return [Colors.green[600]!, Colors.greenAccent[700]!];
+    return [const Color(0xFF1E1E1E), Colors.black];
   }
 
   Color _getTextColor() => _status == "idle" ? Colors.white : Colors.black;
-  
-  Color _getTimerColor() {
-    if (_timeRaw > 0 && _timeRaw <= 60) return Colors.redAccent; 
-    return _getTextColor();
-  }
+  Color _getTimerColor() => (_timeRaw > 0 && _timeRaw <= 60) ? Colors.redAccent : _getTextColor();
 
   @override
   void dispose() {
-    WakelockPlus.disable(); // Matikan penahan layar saat aplikasi ditutup
+    WakelockPlus.disable(); 
     _channel?.sink.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_channel == null) {
+    if (!_isConnected) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Konek ke FOH')),
+        appBar: AppBar(title: const Text('Menyambungkan FOH...'), backgroundColor: const Color(0xFF1E1E1E)),
         body: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(30.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const Icon(Icons.wifi_tethering_off, size: 80, color: Colors.grey),
+              const SizedBox(height: 20),
               TextField(
                 controller: _ipController,
-                decoration: const InputDecoration(labelText: 'Masukkan IP FOH (Misal: 192.168.1.100)'),
+                style: const TextStyle(fontSize: 20),
+                decoration: InputDecoration(
+                  labelText: 'IP FOH',
+                  filled: true,
+                  fillColor: const Color(0xFF2A2A2A),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 30),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 60)),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 60),
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                ),
                 onPressed: _connect, 
-                child: const Text('CONNECT', style: TextStyle(fontSize: 20))
+                child: const Text('CONNECT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))
               )
             ],
           ),
@@ -330,38 +461,62 @@ class _ClientScreenState extends State<ClientScreen> {
       );
     }
 
+    // Tampilan Layar Utama MC
     return Scaffold(
-      backgroundColor: _getBgColor(),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: [
-              // Script Teks (Bisa di-scroll jika panjang)
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Text(
-                    _text,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 45, fontWeight: FontWeight.bold, color: _getTextColor()),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+            // Trik UI UX agar konten selalu presisi di tengah layar (Vertikal & Horizontal)
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Spacer(),
+                          // Teks Script dengan efek bayangan
+                          Text(
+                            _text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 55, 
+                              fontWeight: FontWeight.w900, 
+                              color: _getTextColor(),
+                              height: 1.2,
+                              shadows: _status == "idle" ? [] : [
+                                Shadow(color: Colors.white.withOpacity(0.5), blurRadius: 20)
+                              ]
+                            ),
+                          ),
+                          const SizedBox(height: 40),
+                          // Timer Presisi di Tengah Bawah
+                          if (_timeText.isNotEmpty)
+                            Text(
+                              _timeText,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 90, 
+                                fontWeight: FontWeight.w900, 
+                                color: _getTimerColor(),
+                                fontFeatures: const [FontFeature.tabularFigures()]
+                              ),
+                            ),
+                          const Spacer(),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              
-              // Timer di bagian bawah layar
-              if (_timeText.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _timeText,
-                  style: TextStyle(
-                    fontSize: 70, 
-                    fontWeight: FontWeight.w900, 
-                    color: _getTimerColor(),
-                    fontFeatures: const [FontFeature.tabularFigures()]
-                  ),
-                ),
-              ]
-            ],
+                );
+              },
+            ),
           ),
         ),
       ),
