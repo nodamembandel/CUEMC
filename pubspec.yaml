@@ -1,0 +1,6 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  shelf: ^1.4.1
+  shelf_web_socket: ^1.0.4
+  web_socket_channel: ^2.4.4
