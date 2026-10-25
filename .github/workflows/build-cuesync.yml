@@ -10,10 +10,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-15
+          - os: macos-13
             target: macos
             artifact_name: CueSync-Mac
-            artifact_path: build/macos/Build/Products/Release/CueSync.app
+            # Path upload diganti ke file zip yang kita buat di bawah
+            artifact_path: CueSync-Mac-App.tar.gz 
           - os: windows-latest
             target: windows
             artifact_name: CueSync-Windows
@@ -26,11 +27,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4 # Diperbarui ke v4
+      - uses: actions/checkout@v4
 
       - name: Setup Java (Untuk Android)
         if: matrix.target == 'apk'
-        uses: actions/setup-java@v4 # Diperbarui ke v4
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -46,8 +47,13 @@ jobs:
       - name: Build Application
         run: flutter build ${{ matrix.target }}
 
+      # Langkah BARU: Mengompresi Aplikasi Mac sebelum diupload agar strukturnya tidak rusak
+      - name: Compress Mac App
+        if: matrix.target == 'macos'
+        run: tar -czf CueSync-Mac-App.tar.gz -C build/macos/Build/Products/Release CueSync.app
+
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # Diperbarui ke v4 (Ini yang menyelesaikan error)
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
