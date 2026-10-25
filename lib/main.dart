@@ -26,7 +26,6 @@ class CueSyncApp extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             elevation: 8,
-            shadowColor: Colors.black.withOpacity(0.5),
           ),
         ),
       ),
@@ -47,11 +46,7 @@ class RoleSelectionScreen extends StatelessWidget {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1E1E1E), Color(0xFF000000)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: LinearGradient(colors: [Color(0xFF1E1E1E), Color(0xFF000000)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         ),
         child: Center(
           child: SingleChildScrollView(
@@ -60,20 +55,13 @@ class RoleSelectionScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    'CUESYNC PRO',
-                    // ERROR FIXED: FontWeight.black diubah menjadi FontWeight.w900
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white), 
-                  ),
+                  const Text('CUESYNC PRO', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white)),
                   const SizedBox(height: 10),
-                  const Text(
-                    'Live Show Management System',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
+                  const Text('Dual Mode: Live Cue & Teleprompter', style: TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 50),
                   _buildRoleCard(context, 'MASTER FOH', 'Mac / Windows System', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
                   const SizedBox(height: 24),
-                  _buildRoleCard(context, 'CLIENT MC', 'Android Mobile System', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
+                  _buildRoleCard(context, 'CLIENT MC', 'Android Mobile / Tablet', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
                 ],
               ),
             ),
@@ -94,9 +82,6 @@ class RoleSelectionScreen extends StatelessWidget {
           color: color.withOpacity(0.08),
           border: Border.all(color: color.withOpacity(0.4), width: 2),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(color: color.withOpacity(0.05), blurRadius: 15, spreadRadius: 2)
-          ]
         ),
         child: Row(
           children: [
@@ -134,11 +119,14 @@ class _MasterScreenState extends State<MasterScreen> {
   String _localIp = 'Mencari IP...';
   String _currentStatus = "idle";
   
+  // Dua controller terpisah untuk mode yang berbeda
   final TextEditingController _cueController = TextEditingController(text: "STANDBY MC");
+  final TextEditingController _scriptController = TextEditingController(text: "Ini Halaman 1\n\n===\n\nIni Halaman 2\nMC bisa geser (swipe) layar ini.");
   final TextEditingController _timerController = TextEditingController(text: "5");
 
   Timer? _countdownTimer;
   int _timeInSeconds = 0;
+  bool _isScriptMode = false; // Toggle Mode
 
   @override
   void initState() {
@@ -201,10 +189,13 @@ class _MasterScreenState extends State<MasterScreen> {
     _sendData("update");
   }
 
+  // Mengirim semua data sekaligus ke HP MC
   void _sendData(String command) {
     final message = jsonEncode({
+      "mode": _isScriptMode ? "script" : "cue",
       "status": _currentStatus,
       "text": _cueController.text,
+      "script": _scriptController.text,
       "time": _formattedTime,
       "timeRaw": _timeInSeconds,
       "command": command 
@@ -233,29 +224,51 @@ class _MasterScreenState extends State<MasterScreen> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
+            // SWITCH MODE & INPUT TEKS
             Expanded(
               child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                ),
-                child: TextField(
-                  controller: _cueController,
-                  maxLines: null,
-                  expands: true,
-                  style: const TextStyle(fontSize: 26, color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Ketik Script / Instruksi MC',
-                    labelStyle: TextStyle(color: Colors.grey),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.all(20),
-                  ),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(15)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_isScriptMode ? "📝 MODE SCRIPT (MC Baca Sendiri)" : "🪧 MODE CUE (Layar Penuh FOH)", 
+                             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                        Switch(
+                          value: _isScriptMode, 
+                          activeColor: Colors.blueAccent,
+                          onChanged: (val) {
+                            setState(() => _isScriptMode = val);
+                            _sendData("update");
+                          }
+                        )
+                      ],
+                    ),
+                    const Divider(color: Colors.grey),
+                    if (_isScriptMode)
+                      const Text("Ketik '===' (3 sama dengan) untuk memisahkan halaman Script.", style: TextStyle(color: Colors.orangeAccent)),
+                    const SizedBox(height: 10),
+                    
+                    Expanded(
+                      child: TextField(
+                        controller: _isScriptMode ? _scriptController : _cueController,
+                        maxLines: null,
+                        expands: true,
+                        onChanged: (_) => _sendData("update"), // Auto update saat diketik
+                        style: const TextStyle(fontSize: 24, color: Colors.white),
+                        decoration: const InputDecoration(border: InputBorder.none),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
             
+            // KONTROL BAWAH (Selalu Tampil)
             Row(
               children: [
                 Expanded(
@@ -264,20 +277,14 @@ class _MasterScreenState extends State<MasterScreen> {
                     controller: _timerController,
                     keyboardType: TextInputType.number,
                     style: const TextStyle(fontSize: 22),
-                    decoration: InputDecoration(
-                      labelText: 'Menit',
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                    ),
+                    decoration: InputDecoration(labelText: 'Menit', filled: true, fillColor: const Color(0xFF2A2A2A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
                   ),
                 ),
                 const SizedBox(width: 15),
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.play_arrow, color: Colors.white),
-                    label: const Text('START', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    icon: const Icon(Icons.play_arrow, color: Colors.white), label: const Text('START', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: _startTimer,
                   ),
@@ -286,8 +293,7 @@ class _MasterScreenState extends State<MasterScreen> {
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.stop, color: Colors.white),
-                    label: const Text('STOP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    icon: const Icon(Icons.stop, color: Colors.white), label: const Text('STOP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: _stopTimer,
                   ),
@@ -296,16 +302,14 @@ class _MasterScreenState extends State<MasterScreen> {
                 Expanded(
                   flex: 4,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.vibration, color: Colors.white),
-                    label: const Text('GETARKAN HP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    icon: const Icon(Icons.vibration, color: Colors.white), label: const Text('GETARKAN HP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: () => _sendData("vibrate"),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 30),
-            
+            const SizedBox(height: 20),
             Row(
               children: [
                 _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
@@ -328,16 +332,14 @@ class _MasterScreenState extends State<MasterScreen> {
         onTap: () => _changeStatus(status),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
-          height: 120,
+          height: 100,
           decoration: BoxDecoration(
             color: bgColor.withOpacity(isActive ? 1.0 : 0.4),
             borderRadius: BorderRadius.circular(15),
             border: isActive ? Border.all(color: Colors.white, width: 3) : null,
             boxShadow: isActive ? [BoxShadow(color: bgColor.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)] : [],
           ),
-          child: Center(
-            child: Text(title, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
-          ),
+          child: Center(child: Text(title, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: textColor))),
         ),
       ),
     );
@@ -345,7 +347,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 3. HALAMAN CLIENT (ANDROID MC)
+// 3. HALAMAN CLIENT (ANDROID MC & TABLET)
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -354,15 +356,18 @@ class ClientScreen extends StatefulWidget {
 }
 
 class _ClientScreenState extends State<ClientScreen> {
-  static const _platform = MethodChannel('com.example.cuesync/vibration'); 
   WebSocketChannel? _channel;
+  
+  String _mode = "cue"; 
   String _status = "idle"; 
   String _text = "Menunggu FOH...";
+  String _script = "";
   String _timeText = "";
   int _timeRaw = 0;
   bool _isConnected = false;
   
   final TextEditingController _ipController = TextEditingController();
+  final PageController _pageController = PageController(); // Controller Halaman Script
 
   @override
   void initState() {
@@ -380,6 +385,14 @@ class _ClientScreenState extends State<ClientScreen> {
     }
   }
 
+  // FUNGSI GETAR PAKSA (Loop Dart Haptic) 100% Berhasil di Semua Android
+  void _triggerVibration() async {
+    for (int i = 0; i < 7; i++) {
+      HapticFeedback.heavyImpact();
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+  }
+
   void _connect() async {
     if (_ipController.text.isEmpty) return;
     
@@ -392,18 +405,18 @@ class _ClientScreenState extends State<ClientScreen> {
       
       setState(() => _isConnected = true);
 
-      _channel!.stream.listen((message) async {
+      _channel!.stream.listen((message) {
         final data = jsonDecode(message);
         
         if (data['command'] == 'vibrate') {
-          try {
-            await _platform.invokeMethod('vibrate', {'duration': 1200});
-          } catch (_) {}
+          _triggerVibration(); // Panggil fungsi getar denyut
         }
 
         setState(() {
+          _mode = data['mode'] ?? _mode;
           _status = data['status'] ?? _status;
           _text = data['text'] ?? _text;
+          _script = data['script'] ?? _script;
           _timeText = data['time'] ?? _timeText;
           _timeRaw = data['timeRaw'] ?? _timeRaw;
         });
@@ -422,7 +435,6 @@ class _ClientScreenState extends State<ClientScreen> {
       _text = "Mencoba Reconnect...";
       _status = "idle";
     });
-    
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_isConnected) _connect();
     });
@@ -441,6 +453,7 @@ class _ClientScreenState extends State<ClientScreen> {
   void dispose() {
     WakelockPlus.disable(); 
     _channel?.sink.close();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -450,111 +463,123 @@ class _ClientScreenState extends State<ClientScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Koneksi FOH'), backgroundColor: const Color(0xFF1E1E1E)),
         body: Center(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(30.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.wifi_off, size: 70, color: Colors.orangeAccent),
-                  const SizedBox(height: 12),
-                  const Text('Terputus dari FOH', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  const Text('Masukkan IP Master FOH untuk menyambungkan', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 35),
-                  TextField(
-                    controller: _ipController,
-                    style: const TextStyle(fontSize: 18),
-                    decoration: InputDecoration(
-                      labelText: 'IP FOH Address',
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 60),
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                    ),
-                    onPressed: _connect, 
-                    child: const Text('SAMBUNGKAN', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))
-                  )
-                ],
-              ),
+          child: Padding(
+            padding: const EdgeInsets.all(30.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.wifi_off, size: 70, color: Colors.orangeAccent),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _ipController,
+                  style: const TextStyle(fontSize: 18),
+                  decoration: InputDecoration(labelText: 'IP FOH Address', filled: true, fillColor: const Color(0xFF2A2A2A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 60), backgroundColor: Colors.blueAccent),
+                  onPressed: _connect, child: const Text('SAMBUNGKAN', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))
+                )
+              ],
             ),
           ),
         ),
       );
     }
 
-    return Scaffold(
-      body: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight),
-        ),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+    // TAMPILAN MODE SCRIPT (MC)
+    if (_mode == "script") {
+      List<String> scriptPages = _script.split('===');
+      if (scriptPages.isEmpty) scriptPages = ["..."];
+
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              // Area Baca Script yang bisa di-Swipe
+              PageView.builder(
+                controller: _pageController,
+                itemCount: scriptPages.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 80.0, left: 20, right: 20, bottom: 20),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center, 
-                        crossAxisAlignment: CrossAxisAlignment.center, 
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Spacer(flex: 3),
-                          Center(
-                            child: Text(
-                              _text,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 48, 
-                                fontWeight: FontWeight.w900, 
-                                color: _getTextColor(),
-                                height: 1.25,
-                                shadows: _status == "idle" ? [] : [
-                                  Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 4))
-                                ]
-                              ),
-                            ),
+                          Text(
+                            scriptPages[index].trim(),
+                            style: const TextStyle(fontSize: 40, color: Colors.white, height: 1.4),
                           ),
-                          
-                          if (_timeText.isNotEmpty) ...[
-                            const Spacer(flex: 1),
-                            Center(
-                              child: Text(
-                                _timeText,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  // ERROR FIXED: FontWeight.black diubah menjadi FontWeight.w900
-                                  fontSize: 84, 
-                                  fontWeight: FontWeight.w900, 
-                                  color: _getTimerColor(),
-                                  fontFeatures: const [FontFeature.tabularFigures()],
-                                  shadows: [
-                                    Shadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)
-                                  ]
-                                ),
-                              ),
-                            ),
-                          ],
-                          const Spacer(flex: 4),
+                          const SizedBox(height: 50),
+                          Center(child: Text("Halaman ${index + 1} dari ${scriptPages.length}", style: const TextStyle(color: Colors.grey, fontSize: 16))),
                         ],
                       ),
                     ),
+                  );
+                },
+              ),
+              
+              // SPANDUK CUE MELAYANG (Muncul jika FOH kirim Go/Standby)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                top: _status == "idle" ? -150 : 10,
+                left: 10, right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: _getBgColors()),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 15, spreadRadius: 2)],
+                    border: Border.all(color: Colors.white, width: 2)
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(_text, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _getTextColor())),
+                      ),
+                      if (_timeText.isNotEmpty)
+                        Text(_timeText, style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: _getTimerColor(), fontFeatures: const [FontFeature.tabularFigures()])),
+                    ],
                   ),
                 ),
-              );
-            },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // TAMPILAN MODE CUE LAMA (Layar Penuh)
+    return Scaffold(
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center, 
+                children: [
+                  Text(
+                    _text, textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 55, fontWeight: FontWeight.w900, color: _getTextColor(), height: 1.25),
+                  ),
+                  if (_timeText.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      _timeText, textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 90, fontWeight: FontWeight.w900, color: _getTimerColor(), fontFeatures: const [FontFeature.tabularFigures()]),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
