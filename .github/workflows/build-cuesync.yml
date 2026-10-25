@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-15
             target: macos
             artifact_name: CueSync-Mac
             # Path upload diganti ke file zip yang kita buat di bawah
