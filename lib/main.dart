@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Dibutuhkan untuk MethodChannel
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibration/vibration.dart'; // Package baru untuk paksa getar
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,8 +24,9 @@ class CueSyncApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF121212),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 5,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 8,
+            shadowColor: Colors.black.withOpacity(0.5),
           ),
         ),
       ),
@@ -46,20 +47,33 @@ class RoleSelectionScreen extends StatelessWidget {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(colors: [Color(0xFF1E1E1E), Color(0xFF000000)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: LinearGradient(
+            colors: [Color(0xFF1E1E1E), Color(0xFF000000)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
         child: Center(
           child: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              // Wrap akan otomatis membuat kotak turun ke bawah jika layar HP sempit
-              child: Wrap(
-                spacing: 20,
-                runSpacing: 20,
-                alignment: WrapAlignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+              // Disusun ke bawah agar pas & proporsional di HP / Mac
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildRoleCard(context, 'MASTER FOH\n(Mac / Win)', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
-                  _buildRoleCard(context, 'CLIENT MC\n(Android)', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
+                  const Text(
+                    'CUESYNC PRO',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.black, letterSpacing: 2, color: Colors.white),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Live Show Management System',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 50),
+                  _buildRoleCard(context, 'MASTER FOH', 'Mac / Windows System', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
+                  const SizedBox(height: 24),
+                  _buildRoleCard(context, 'CLIENT MC', 'Android Mobile System', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
                 ],
               ),
             ),
@@ -69,24 +83,35 @@ class RoleSelectionScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRoleCard(BuildContext context, String title, IconData icon, Color color, Widget screen) {
+  Widget _buildRoleCard(BuildContext context, String title, String sub, IconData icon, Color color, Widget screen) {
     return InkWell(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen)),
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        width: 200, // Ukuran kotak dikecilkan sedikit agar pas di HP
-        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+        width: 280,
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          border: Border.all(color: color.withOpacity(0.5), width: 2),
+          color: color.withOpacity(0.08),
+          border: Border.all(color: color.withOpacity(0.4), width: 2),
           borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(color: color.withOpacity(0.05), blurRadius: 15, spreadRadius: 2)
+          ]
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Icon(icon, size: 70, color: color),
-            const SizedBox(height: 20),
-            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            Icon(icon, size: 50, color: color),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+                  const SizedBox(height: 4),
+                  Text(sub, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -252,7 +277,7 @@ class _MasterScreenState extends State<MasterScreen> {
                   flex: 3,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.play_arrow, color: Colors.white),
-                    label: const Text('START TIMER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    label: const Text('START', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: _startTimer,
                   ),
@@ -262,7 +287,7 @@ class _MasterScreenState extends State<MasterScreen> {
                   flex: 3,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.stop, color: Colors.white),
-                    label: const Text('STOP TIMER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    label: const Text('STOP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: _stopTimer,
                   ),
@@ -272,7 +297,7 @@ class _MasterScreenState extends State<MasterScreen> {
                   flex: 4,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.vibration, color: Colors.white),
-                    label: const Text('GETARKAN HP MC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    label: const Text('GETARKAN HP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
                     onPressed: () => _sendData("vibrate"),
                   ),
@@ -320,7 +345,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 3. HALAMAN CLIENT (ANDROID MC) - Anti Terpotong
+// 3. HALAMAN CLIENT (ANDROID MC) - Sempurna Tengah & Responsif
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -329,6 +354,7 @@ class ClientScreen extends StatefulWidget {
 }
 
 class _ClientScreenState extends State<ClientScreen> {
+  static const _platform = MethodChannel('com.example.cuesync/vibration'); // Pemanggilan getaran native
   WebSocketChannel? _channel;
   String _status = "idle"; 
   String _text = "Menunggu FOH...";
@@ -369,13 +395,11 @@ class _ClientScreenState extends State<ClientScreen> {
       _channel!.stream.listen((message) async {
         final data = jsonDecode(message);
         
-        // Eksekusi Paksa Mesin Getar Hardware (Lebih kuat)
+        // Memaksa getaran Hardware Android bekerja selama 1,2 detik (Pasti Terasa!)
         if (data['command'] == 'vibrate') {
-          bool? hasVibrator = await Vibration.hasVibrator();
-          if (hasVibrator == true) {
-            // Bergetar selama 1 detik (1000 milidetik)
-            Vibration.vibrate(duration: 1000); 
-          }
+          try {
+            await _platform.invokeMethod('vibrate', {'duration': 1200});
+          } catch (_) {}
         }
 
         setState(() {
@@ -406,9 +430,9 @@ class _ClientScreenState extends State<ClientScreen> {
   }
 
   List<Color> _getBgColors() {
-    if (_status == "standby") return [Colors.orange, Colors.yellow[700]!];
-    if (_status == "go") return [Colors.green[600]!, Colors.greenAccent[700]!];
-    return [const Color(0xFF1E1E1E), Colors.black];
+    if (_status == "standby") return [Colors.orange[800]!, Colors.yellow[700]!];
+    if (_status == "go") return [Colors.green[800]!, Colors.greenAccent[700]!];
+    return [const Color(0xFF1A1A1A), Colors.black];
   }
 
   Color _getTextColor() => _status == "idle" ? Colors.white : Colors.black;
@@ -425,36 +449,44 @@ class _ClientScreenState extends State<ClientScreen> {
   Widget build(BuildContext context) {
     if (!_isConnected) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Menyambungkan FOH...'), backgroundColor: const Color(0xFF1E1E1E)),
-        body: Padding(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.wifi_tethering_off, size: 80, color: Colors.grey),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _ipController,
-                style: const TextStyle(fontSize: 20),
-                decoration: InputDecoration(
-                  labelText: 'IP FOH',
-                  filled: true,
-                  fillColor: const Color(0xFF2A2A2A),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        appBar: AppBar(title: const Text('Koneksi FOH'), backgroundColor: const Color(0xFF1E1E1E)),
+        body: Center(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(30.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off, size: 70, color: Colors.orangeAccent),
+                  const SizedBox(height: 12),
+                  const Text('Terputus dari FOH', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Masukkan IP Master FOH untuk menyambungkan', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 35),
+                  TextField(
+                    controller: _ipController,
+                    style: const TextStyle(fontSize: 18),
+                    decoration: InputDecoration(
+                      labelText: 'IP FOH Address',
+                      filled: true,
+                      fillColor: const Color(0xFF2A2A2A),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 60),
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                    ),
+                    onPressed: _connect, 
+                    child: const Text('SAMBUNGKAN', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))
+                  )
+                ],
               ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 60),
-                  backgroundColor: Colors.blueAccent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-                ),
-                onPressed: _connect, 
-                child: const Text('CONNECT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))
-              )
-            ],
+            ),
           ),
         ),
       );
@@ -462,50 +494,70 @@ class _ClientScreenState extends State<ClientScreen> {
 
     return Scaffold(
       body: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
+        duration: const Duration(milliseconds: 400),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight),
+        ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              children: [
-                // Layout Fleksibel Anti-Terpotong
-                Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Text(
-                        _text,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 45, // Ukuran sedikit disesuaikan untuk layar HP
-                          fontWeight: FontWeight.w900, 
-                          color: _getTextColor(),
-                          height: 1.2,
-                          shadows: _status == "idle" ? [] : [
-                            Shadow(color: Colors.white.withOpacity(0.5), blurRadius: 20)
-                          ]
-                        ),
+          // Memastikan letak horizontal & vertikal berada tepat di tengah tanpa bisa tergeser atau terpotong
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center, // Kunci Rata Tengah Vertikal
+                        crossAxisAlignment: CrossAxisAlignment.center, // Kunci Rata Tengah Horizontal
+                        children: [
+                          const Spacer(flex: 3),
+                          // Script Text (Auto resize + centered)
+                          Center(
+                            child: Text(
+                              _text,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 48, 
+                                fontWeight: FontWeight.w900, 
+                                color: _getTextColor(),
+                                height: 1.25,
+                                shadows: _status == "idle" ? [] : [
+                                  Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 4))
+                                ]
+                              ),
+                            ),
+                          ),
+                          
+                          if (_timeText.isNotEmpty) ...[
+                            const Spacer(flex: 1),
+                            // Countdown Timer (Large, Perfectly Centered)
+                            Center(
+                              child: Text(
+                                _timeText,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 84, 
+                                  fontWeight: FontWeight.black, 
+                                  color: _getTimerColor(),
+                                  fontFeatures: const [FontFeature.tabularFigures()],
+                                  shadows: [
+                                    Shadow(color: Colors.black.withOpacity(0.4), blurRadius: 20)
+                                  ]
+                                ),
+                              ),
+                            ),
+                          ],
+                          const Spacer(flex: 4),
+                        ],
                       ),
                     ),
                   ),
                 ),
-                
-                if (_timeText.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  Text(
-                    _timeText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 80, 
-                      fontWeight: FontWeight.w900, 
-                      color: _getTimerColor(),
-                      fontFeatures: const [FontFeature.tabularFigures()]
-                    ),
-                  ),
-                ]
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
