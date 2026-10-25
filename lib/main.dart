@@ -24,8 +24,8 @@ class CueSyncApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF121212),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 5,
           ),
         ),
       ),
@@ -51,13 +51,13 @@ class RoleSelectionScreen extends StatelessWidget {
         child: Center(
           child: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text('CUESYNC PRO', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white)),
                   const SizedBox(height: 10),
-                  const Text('Dual Mode: Live Cue & Teleprompter', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  const Text('Pro Show Management System', style: TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 50),
                   _buildRoleCard(context, 'MASTER FOH', 'Mac / Windows System', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
                   const SizedBox(height: 24),
@@ -117,16 +117,16 @@ class _MasterScreenState extends State<MasterScreen> {
   HttpServer? _server;
   final List<dynamic> _clients = [];
   String _localIp = 'Mencari IP...';
-  String _currentStatus = "idle";
   
-  // Dua controller terpisah untuk mode yang berbeda
+  String _currentStatus = "idle";
+  bool _isScriptMode = false; 
+
   final TextEditingController _cueController = TextEditingController(text: "STANDBY MC");
-  final TextEditingController _scriptController = TextEditingController(text: "Ini Halaman 1\n\n===\n\nIni Halaman 2\nMC bisa geser (swipe) layar ini.");
+  final TextEditingController _scriptController = TextEditingController(text: "SLIDE 1\n(Paste teks PPT di sini)\n\n===\n\nSLIDE 2\n(Geser ke kiri untuk halaman selanjutnya)");
   final TextEditingController _timerController = TextEditingController(text: "5");
 
   Timer? _countdownTimer;
   int _timeInSeconds = 0;
-  bool _isScriptMode = false; // Toggle Mode
 
   @override
   void initState() {
@@ -163,7 +163,7 @@ class _MasterScreenState extends State<MasterScreen> {
       _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (_timeInSeconds > 0) {
           setState(() => _timeInSeconds--);
-          _sendData("update");
+          _sendData("update"); // Timer otomatis kirim update per detik
         } else {
           timer.cancel();
         }
@@ -186,16 +186,23 @@ class _MasterScreenState extends State<MasterScreen> {
 
   void _changeStatus(String status) {
     _currentStatus = status;
-    _sendData("update");
+    _sendData("update"); // Tombol status otomatis terkirim
   }
 
-  // Mengirim semua data sekaligus ke HP MC
+  // FOH menekan tombol ini agar MC menerima ketikan Script terbaru
+  void _publishScript() {
+    _sendData("update");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Script Berhasil Dikirim ke MC!'), backgroundColor: Colors.green, duration: Duration(seconds: 2))
+    );
+  }
+
   void _sendData(String command) {
     final message = jsonEncode({
       "mode": _isScriptMode ? "script" : "cue",
       "status": _currentStatus,
       "text": _cueController.text,
-      "script": _scriptController.text,
+      "script": _scriptController.text, // Script hanya terkirim saat fungsi ini dipanggil
       "time": _formattedTime,
       "timeRaw": _timeInSeconds,
       "command": command 
@@ -221,13 +228,13 @@ class _MasterScreenState extends State<MasterScreen> {
         elevation: 0,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // SWITCH MODE & INPUT TEKS
+            // EDITOR SCRIPT / CUE
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(15)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +243,7 @@ class _MasterScreenState extends State<MasterScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(_isScriptMode ? "📝 MODE SCRIPT (MC Baca Sendiri)" : "🪧 MODE CUE (Layar Penuh FOH)", 
-                             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                         Switch(
                           value: _isScriptMode, 
                           activeColor: Colors.blueAccent,
@@ -248,27 +255,40 @@ class _MasterScreenState extends State<MasterScreen> {
                       ],
                     ),
                     const Divider(color: Colors.grey),
-                    if (_isScriptMode)
-                      const Text("Ketik '===' (3 sama dengan) untuk memisahkan halaman Script.", style: TextStyle(color: Colors.orangeAccent)),
-                    const SizedBox(height: 10),
+                    if (_isScriptMode) ...[
+                      const Text("Ketik '===' untuk memisahkan halaman (Slide) Script.", style: TextStyle(color: Colors.orangeAccent)),
+                      const SizedBox(height: 10),
+                    ],
                     
+                    // Kolom Input (Tidak ada onChanged agar tidak mengganggu MC)
                     Expanded(
                       child: TextField(
                         controller: _isScriptMode ? _scriptController : _cueController,
                         maxLines: null,
                         expands: true,
-                        onChanged: (_) => _sendData("update"), // Auto update saat diketik
-                        style: const TextStyle(fontSize: 24, color: Colors.white),
-                        decoration: const InputDecoration(border: InputBorder.none),
+                        style: const TextStyle(fontSize: 22, color: Colors.white),
+                        decoration: const InputDecoration(border: InputBorder.none, hintText: "Ketik di sini..."),
                       ),
                     ),
+                    
+                    // TOMBOL PUBLISH SCRIPT
+                    if (_isScriptMode)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          label: const Text("PUBLISH SCRIPT KE MC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20)),
+                          onPressed: _publishScript, // Mengirim data HANYA saat dipencet
+                        ),
+                      )
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             
-            // KONTROL BAWAH (Selalu Tampil)
+            // PANEL KONTROL WAKTU & GETAR
             Row(
               children: [
                 Expanded(
@@ -276,46 +296,48 @@ class _MasterScreenState extends State<MasterScreen> {
                   child: TextField(
                     controller: _timerController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 22),
+                    style: const TextStyle(fontSize: 20),
                     decoration: InputDecoration(labelText: 'Menit', filled: true, fillColor: const Color(0xFF2A2A2A), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
                   ),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.play_arrow, color: Colors.white), label: const Text('START', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    icon: const Icon(Icons.play_arrow, color: Colors.white), label: const Text('START', style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 20)),
                     onPressed: _startTimer,
                   ),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 10),
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.stop, color: Colors.white), label: const Text('STOP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    icon: const Icon(Icons.stop, color: Colors.white), label: const Text('STOP', style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.symmetric(vertical: 20)),
                     onPressed: _stopTimer,
                   ),
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 10),
                 Expanded(
                   flex: 4,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.vibration, color: Colors.white), label: const Text('GETARKAN HP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
+                    icon: const Icon(Icons.warning_amber_rounded, color: Colors.white), label: const Text('PANGGIL MC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 20)),
                     onPressed: () => _sendData("vibrate"),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+            
+            // TOMBOL CUE STATUS
             Row(
               children: [
                 _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
-                const SizedBox(width: 20),
+                const SizedBox(width: 15),
                 _buildStatusButton("GO", "go", Colors.greenAccent[700]!, Colors.black),
-                const SizedBox(width: 20),
+                const SizedBox(width: 15),
                 _buildStatusButton("IDLE / BLACK", "idle", const Color(0xFF333333), Colors.white),
               ],
             )
@@ -329,17 +351,19 @@ class _MasterScreenState extends State<MasterScreen> {
     bool isActive = _currentStatus == status;
     return Expanded(
       child: InkWell(
-        onTap: () => _changeStatus(status),
+        onTap: () {
+          // Jika di mode Script, menekan Standby/Go akan langsung memunculkan Pop-up di MC tanpa mengubah script
+          _changeStatus(status);
+        },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          height: 100,
+          duration: const Duration(milliseconds: 200),
+          height: 90,
           decoration: BoxDecoration(
             color: bgColor.withOpacity(isActive ? 1.0 : 0.4),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(12),
             border: isActive ? Border.all(color: Colors.white, width: 3) : null,
-            boxShadow: isActive ? [BoxShadow(color: bgColor.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)] : [],
           ),
-          child: Center(child: Text(title, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: textColor))),
+          child: Center(child: Text(title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor))),
         ),
       ),
     );
@@ -364,10 +388,12 @@ class _ClientScreenState extends State<ClientScreen> {
   String _script = "";
   String _timeText = "";
   int _timeRaw = 0;
+  
   bool _isConnected = false;
+  bool _isFlashing = false; // Status untuk Visual Flash (Kedip Layar)
   
   final TextEditingController _ipController = TextEditingController();
-  final PageController _pageController = PageController(); // Controller Halaman Script
+  final PageController _pageController = PageController(); 
 
   @override
   void initState() {
@@ -385,12 +411,18 @@ class _ClientScreenState extends State<ClientScreen> {
     }
   }
 
-  // FUNGSI GETAR PAKSA (Loop Dart Haptic) 100% Berhasil di Semua Android
-  void _triggerVibration() async {
-    for (int i = 0; i < 7; i++) {
-      HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(milliseconds: 150));
+  // FUNGSI PERHATIAN GANDA (Getar + Layar Kedip Merah)
+  void _triggerAttention() async {
+    if (_isFlashing) return; // Cegah tumpuk jika FOH spam tombol
+    
+    setState(() => _isFlashing = true);
+    
+    for (int i = 0; i < 8; i++) {
+      HapticFeedback.vibrate(); // Paksa motor hardware dasar menyala
+      await Future.delayed(const Duration(milliseconds: 200));
     }
+    
+    if (mounted) setState(() => _isFlashing = false);
   }
 
   void _connect() async {
@@ -409,7 +441,7 @@ class _ClientScreenState extends State<ClientScreen> {
         final data = jsonDecode(message);
         
         if (data['command'] == 'vibrate') {
-          _triggerVibration(); // Panggil fungsi getar denyut
+          _triggerAttention();
         }
 
         setState(() {
@@ -488,17 +520,18 @@ class _ClientScreenState extends State<ClientScreen> {
       );
     }
 
+    Widget content;
+
     // TAMPILAN MODE SCRIPT (MC)
     if (_mode == "script") {
       List<String> scriptPages = _script.split('===');
       if (scriptPages.isEmpty) scriptPages = ["..."];
 
-      return Scaffold(
+      content = Scaffold(
         backgroundColor: Colors.black,
         body: SafeArea(
           child: Stack(
             children: [
-              // Area Baca Script yang bisa di-Swipe
               PageView.builder(
                 controller: _pageController,
                 itemCount: scriptPages.length,
@@ -523,7 +556,7 @@ class _ClientScreenState extends State<ClientScreen> {
                 },
               ),
               
-              // SPANDUK CUE MELAYANG (Muncul jika FOH kirim Go/Standby)
+              // POP-UP BANNER MUNCUL SAAT FOH TEKAN STANDBY/GO
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 top: _status == "idle" ? -150 : 10,
@@ -539,9 +572,7 @@ class _ClientScreenState extends State<ClientScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(_text, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _getTextColor())),
-                      ),
+                      Expanded(child: Text(_text, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _getTextColor()))),
                       if (_timeText.isNotEmpty)
                         Text(_timeText, style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: _getTimerColor(), fontFeatures: const [FontFeature.tabularFigures()])),
                     ],
@@ -552,37 +583,40 @@ class _ClientScreenState extends State<ClientScreen> {
           ),
         ),
       );
-    }
-
-    // TAMPILAN MODE CUE LAMA (Layar Penuh)
-    return Scaffold(
-      body: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center, 
-                children: [
-                  Text(
-                    _text, textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 55, fontWeight: FontWeight.w900, color: _getTextColor(), height: 1.25),
-                  ),
-                  if (_timeText.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Text(
-                      _timeText, textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 90, fontWeight: FontWeight.w900, color: _getTimerColor(), fontFeatures: const [FontFeature.tabularFigures()]),
-                    ),
+    } else {
+      // TAMPILAN MODE CUE LAMA
+      content = Scaffold(
+        body: AnimatedContainer(
+          duration: const Duration(milliseconds: 400),
+          decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center, 
+                  children: [
+                    Text(_text, textAlign: TextAlign.center, style: TextStyle(fontSize: 55, fontWeight: FontWeight.w900, color: _getTextColor(), height: 1.25)),
+                    if (_timeText.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      Text(_timeText, textAlign: TextAlign.center, style: TextStyle(fontSize: 90, fontWeight: FontWeight.w900, color: _getTimerColor(), fontFeatures: const [FontFeature.tabularFigures()])),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
         ),
+      );
+    }
+
+    // EFEK VISUAL FLASH MENGELILINGI LAYAR JIKA TOMBOL PANGGIL MC DITEKAN
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        border: _isFlashing ? Border.all(color: Colors.redAccent, width: 20) : Border.all(color: Colors.transparent, width: 0),
       ),
+      child: content,
     );
   }
 }
