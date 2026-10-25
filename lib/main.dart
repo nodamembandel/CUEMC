@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart'; // Package baru untuk paksa getar
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,7 +36,7 @@ class CueSyncApp extends StatelessWidget {
 }
 
 // ==========================================
-// 1. HALAMAN PILIH PERAN
+// 1. HALAMAN PILIH PERAN (Anti Terpotong)
 // ==========================================
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -49,13 +49,20 @@ class RoleSelectionScreen extends StatelessWidget {
           gradient: LinearGradient(colors: [Color(0xFF1E1E1E), Color(0xFF000000)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         ),
         child: Center(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildRoleCard(context, 'MASTER FOH\n(Mac / Windows)', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
-              const SizedBox(width: 40),
-              _buildRoleCard(context, 'CLIENT MC\n(Android)', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
-            ],
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              // Wrap akan otomatis membuat kotak turun ke bawah jika layar HP sempit
+              child: Wrap(
+                spacing: 20,
+                runSpacing: 20,
+                alignment: WrapAlignment.center,
+                children: [
+                  _buildRoleCard(context, 'MASTER FOH\n(Mac / Win)', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
+                  _buildRoleCard(context, 'CLIENT MC\n(Android)', Icons.smartphone, Colors.orangeAccent, const ClientScreen()),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -67,8 +74,8 @@ class RoleSelectionScreen extends StatelessWidget {
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => screen)),
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        width: 250,
-        padding: const EdgeInsets.all(40),
+        width: 200, // Ukuran kotak dikecilkan sedikit agar pas di HP
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           border: Border.all(color: color.withOpacity(0.5), width: 2),
@@ -77,9 +84,9 @@ class RoleSelectionScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 80, color: color),
+            Icon(icon, size: 70, color: color),
             const SizedBox(height: 20),
-            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
       ),
@@ -169,14 +176,13 @@ class _MasterScreenState extends State<MasterScreen> {
     _sendData("update");
   }
 
-  // Fungsi pengiriman data (Bisa Teks/Status, Bisa Perintah Getar)
   void _sendData(String command) {
     final message = jsonEncode({
       "status": _currentStatus,
       "text": _cueController.text,
       "time": _formattedTime,
       "timeRaw": _timeInSeconds,
-      "command": command // 'update' atau 'vibrate'
+      "command": command 
     });
     for (var client in _clients) {
       client.sink.add(message);
@@ -202,7 +208,6 @@ class _MasterScreenState extends State<MasterScreen> {
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // Baris Input Script
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -226,7 +231,6 @@ class _MasterScreenState extends State<MasterScreen> {
             ),
             const SizedBox(height: 20),
             
-            // Baris Timer & Tombol Getar
             Row(
               children: [
                 Expanded(
@@ -264,21 +268,19 @@ class _MasterScreenState extends State<MasterScreen> {
                   ),
                 ),
                 const SizedBox(width: 15),
-                // FITUR BARU: TOMBOL GETAR MANUAL
                 Expanded(
                   flex: 4,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.vibration, color: Colors.white),
                     label: const Text('GETARKAN HP MC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.purpleAccent, padding: const EdgeInsets.symmetric(vertical: 22)),
-                    onPressed: () => _sendData("vibrate"), // Tembak perintah getar
+                    onPressed: () => _sendData("vibrate"),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 30),
             
-            // Baris Status GO / STANDBY
             Row(
               children: [
                 _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
@@ -318,7 +320,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 3. HALAMAN CLIENT (ANDROID MC)
+// 3. HALAMAN CLIENT (ANDROID MC) - Anti Terpotong
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -339,24 +341,22 @@ class _ClientScreenState extends State<ClientScreen> {
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable(); // Layar nyala terus di Android 10-16
+    WakelockPlus.enable(); 
     _loadLastIp();
   }
 
-  // Muat IP terakhir dan otomatis sambung
   Future<void> _loadLastIp() async {
     final prefs = await SharedPreferences.getInstance();
     String? lastIp = prefs.getString('last_ip');
     if (lastIp != null && lastIp.isNotEmpty) {
       _ipController.text = lastIp;
-      _connect(); // Auto-reconnect
+      _connect(); 
     }
   }
 
   void _connect() async {
     if (_ipController.text.isEmpty) return;
     
-    // Simpan IP untuk sesi berikutnya
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_ip', _ipController.text);
 
@@ -366,14 +366,16 @@ class _ClientScreenState extends State<ClientScreen> {
       
       setState(() => _isConnected = true);
 
-      _channel!.stream.listen((message) {
+      _channel!.stream.listen((message) async {
         final data = jsonDecode(message);
         
-        // Logika Getar Spesifik dari tombol Master
+        // Eksekusi Paksa Mesin Getar Hardware (Lebih kuat)
         if (data['command'] == 'vibrate') {
-          HapticFeedback.heavyImpact();
-          Future.delayed(const Duration(milliseconds: 200), () => HapticFeedback.heavyImpact());
-          Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.heavyImpact());
+          bool? hasVibrator = await Vibration.hasVibrator();
+          if (hasVibrator == true) {
+            // Bergetar selama 1 detik (1000 milidetik)
+            Vibration.vibrate(duration: 1000); 
+          }
         }
 
         setState(() {
@@ -390,7 +392,6 @@ class _ClientScreenState extends State<ClientScreen> {
     }
   }
 
-  // Auto Reconnect Stabilizer
   void _handleDisconnect() {
     if (!mounted) return;
     setState(() {
@@ -399,13 +400,11 @@ class _ClientScreenState extends State<ClientScreen> {
       _status = "idle";
     });
     
-    // Coba konek ulang setiap 3 detik di background
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_isConnected) _connect();
     });
   }
 
-  // Tampilan Warna Halus (Gradient)
   List<Color> _getBgColors() {
     if (_status == "standby") return [Colors.orange, Colors.yellow[700]!];
     if (_status == "go") return [Colors.green[600]!, Colors.greenAccent[700]!];
@@ -461,61 +460,51 @@ class _ClientScreenState extends State<ClientScreen> {
       );
     }
 
-    // Tampilan Layar Utama MC
     return Scaffold(
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         decoration: BoxDecoration(gradient: LinearGradient(colors: _getBgColors(), begin: Alignment.topLeft, end: Alignment.bottomRight)),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-            // Trik UI UX agar konten selalu presisi di tengah layar (Vertikal & Horizontal)
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: IntrinsicHeight(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Spacer(),
-                          // Teks Script dengan efek bayangan
-                          Text(
-                            _text,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 55, 
-                              fontWeight: FontWeight.w900, 
-                              color: _getTextColor(),
-                              height: 1.2,
-                              shadows: _status == "idle" ? [] : [
-                                Shadow(color: Colors.white.withOpacity(0.5), blurRadius: 20)
-                              ]
-                            ),
-                          ),
-                          const SizedBox(height: 40),
-                          // Timer Presisi di Tengah Bawah
-                          if (_timeText.isNotEmpty)
-                            Text(
-                              _timeText,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 90, 
-                                fontWeight: FontWeight.w900, 
-                                color: _getTimerColor(),
-                                fontFeatures: const [FontFeature.tabularFigures()]
-                              ),
-                            ),
-                          const Spacer(),
-                        ],
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                // Layout Fleksibel Anti-Terpotong
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Text(
+                        _text,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 45, // Ukuran sedikit disesuaikan untuk layar HP
+                          fontWeight: FontWeight.w900, 
+                          color: _getTextColor(),
+                          height: 1.2,
+                          shadows: _status == "idle" ? [] : [
+                            Shadow(color: Colors.white.withOpacity(0.5), blurRadius: 20)
+                          ]
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+                
+                if (_timeText.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    _timeText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 80, 
+                      fontWeight: FontWeight.w900, 
+                      color: _getTimerColor(),
+                      fontFeatures: const [FontFeature.tabularFigures()]
+                    ),
+                  ),
+                ]
+              ],
             ),
           ),
         ),
