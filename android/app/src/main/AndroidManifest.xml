@@ -1,10 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 1. IZIN KONEKSI JARINGAN LOKAL (DITAMBAHKAN) -->
+    <!-- 1. IZIN JARINGAN (Untuk koneksi lokal WebSocket) -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    
+    <!-- 2. FITUR BARU: IZIN GETAR & LAYAR MENYALA (Wakelock) -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-    <!-- 2. IZIN CLEARTEXT TRAFFIC UNTUK ANDROID 12+ (DITAMBAHKAN) -->
     <application
         android:label="cuesync"
         android:name="${applicationName}"
