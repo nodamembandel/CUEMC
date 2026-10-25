@@ -14,3 +14,4 @@ dependencies:
   web_socket_channel: ^2.4.4
   wakelock_plus: ^1.2.8
   shared_preferences: ^2.2.2
+  vibration: ^1.8.3
