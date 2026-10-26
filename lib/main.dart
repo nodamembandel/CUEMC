@@ -31,7 +31,7 @@ class CueSyncApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LicenseGate(), // Aplikasi kini ditahan di Gerbang Lisensi terlebih dahulu
+      home: const LicenseGate(), 
       debugShowCheckedModeBanner: false,
     );
   }
@@ -51,7 +51,6 @@ class _LicenseGateState extends State<LicenseGate> {
   bool _isUnlocked = false;
   final TextEditingController _keyController = TextEditingController();
 
-  // KATA SANDI RAHASIA PABRIK (Harus sama persis dengan KeyGen)
   final String _secretSalt = "AGASTA_PRO_2026_SECURE";
 
   @override
@@ -63,14 +62,12 @@ class _LicenseGateState extends State<LicenseGate> {
   Future<void> _checkLicenseStatus() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Cek apakah sudah pernah di-unlock sebelumnya
     bool unlocked = prefs.getBool('is_unlocked') ?? false;
     if (unlocked) {
       setState(() => _isUnlocked = true);
       return;
     }
 
-    // Jika belum, ciptakan Hardware ID unik untuk perangkat ini (4 Digit)
     String? savedHwId = prefs.getString('hardware_id');
     if (savedHwId == null) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -82,7 +79,6 @@ class _LicenseGateState extends State<LicenseGate> {
     setState(() => _hwId = savedHwId!);
   }
 
-  // Mesin Pengecek Kecocokan Kunci
   String _encryptHardwareId(String hwId) {
     String raw = "$hwId-$_secretSalt";
     String encoded = base64UrlEncode(utf8.encode(raw)).replaceAll('=', '').toUpperCase();
@@ -114,10 +110,8 @@ class _LicenseGateState extends State<LicenseGate> {
 
   @override
   Widget build(BuildContext context) {
-    // Jika lisensi valid, langsung masuk ke Menu Utama (Role Selection)
     if (_isUnlocked) return const RoleSelectionScreen();
 
-    // Jika belum valid, tahan di Halaman Lock Screen
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       body: Center(
@@ -207,7 +201,7 @@ const String _htmlContent = r'''
   <div id="cue-mode" class="idle">
      <div id="cue-text" class="text-display">Menyambungkan...</div>
      <div id="cue-time" class="time-display"></div>
-     <div class="info">Atur Auto-Lock iPhone ke "Never" (Pengaturan > Tampilan)</div>
+     <div class="info">Atur Auto-Lock iPhone ke "Never"</div>
   </div>
   <div id="script-mode">
      <div id="script-content"></div>
@@ -238,10 +232,7 @@ const String _htmlContent = r'''
            document.getElementById('script-content').innerHTML = pages.join('<br><hr style="border-color:#333; margin:40px 0; border-width: 2px;"><br>');
         }
       };
-      ws.onclose = () => {
-        document.getElementById('cue-text').innerText = "Terputus. Reconnecting...";
-        setTimeout(connect, 2000);
-      };
+      ws.onclose = () => { setTimeout(connect, 2000); };
     }
     connect();
   </script>
@@ -269,9 +260,9 @@ class RoleSelectionScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('CUESYNC PRO', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white)),
+                  const Text('AGASTA PRO SYSTEM', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2, color: Colors.white)),
                   const SizedBox(height: 10),
-                  const Text('Pro Show Management System', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  const Text('Live Show Management System', style: TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 50),
                   _buildRoleCard(context, 'MASTER FOH', 'Mac / Windows System', Icons.laptop_mac, Colors.blueAccent, const MasterScreen()),
                   const SizedBox(height: 24),
@@ -319,7 +310,7 @@ class RoleSelectionScreen extends StatelessWidget {
 }
 
 // ==========================================
-// 4. HALAMAN MASTER (MAC / WINDOWS)
+// 4. HALAMAN MASTER (MAC / WINDOWS) - UI BARU
 // ==========================================
 class MasterScreen extends StatefulWidget {
   const MasterScreen({super.key});
@@ -334,7 +325,10 @@ class _MasterScreenState extends State<MasterScreen> {
   String _localIp = 'Mencari IP...';
   
   String _currentStatus = "idle";
-  bool _isScriptMode = false; 
+  
+  // PEMISAHAN LOGIKA: Layar FOH vs Layar MC
+  bool _fohEditingScript = false; // true = FOH sedang edit naskah, false = FOH sedang edit Cue
+  String _mcDisplayMode = "cue";  // "cue" = Layar penuh warna, "script" = Layar baca naskah
 
   final TextEditingController _cueController = TextEditingController(text: "STANDBY MC");
   final TextEditingController _scriptController = TextEditingController(text: "SLIDE 1\n(Paste teks PPT di sini)\n\n===\n\nSLIDE 2\n(Geser ke kiri untuk halaman selanjutnya)");
@@ -411,7 +405,7 @@ class _MasterScreenState extends State<MasterScreen> {
 
   void _sendData(String command) {
     final message = jsonEncode({
-      "mode": _isScriptMode ? "script" : "cue",
+      "mode": _mcDisplayMode, // Apa yang tampil di MC dikontrol murni dari tombol hijau
       "status": _currentStatus,
       "text": _cueController.text,
       "script": _scriptController.text,
@@ -422,6 +416,34 @@ class _MasterScreenState extends State<MasterScreen> {
     for (var client in _clients) {
       client.sink.add(message);
     }
+  }
+
+  // WIDGET TOMBOL CUSTOM
+  Widget _buildEditorToggle(String title, bool isScript) {
+    bool active = _fohEditingScript == isScript;
+    return InkWell(
+      onTap: () => setState(() => _fohEditingScript = isScript),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(color: active ? Colors.blueAccent : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+        child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: active ? Colors.white : Colors.grey)),
+      ),
+    );
+  }
+
+  Widget _buildMcModeToggle(String title, String mode) {
+    bool active = _mcDisplayMode == mode;
+    return InkWell(
+      onTap: () {
+        setState(() => _mcDisplayMode = mode);
+        _sendData("update"); // Paksa MC pindah layar seketika
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(color: active ? Colors.green : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+        child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: active ? Colors.white : Colors.grey)),
+      ),
+    );
   }
 
   @override
@@ -451,6 +473,35 @@ class _MasterScreenState extends State<MasterScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
+            // PANEL EDITOR FOH & PANEL LAYAR MC
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // KONTROL EDITOR FOH (Biru)
+                Container(
+                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    children: [
+                      _buildEditorToggle("EDIT TEKS CUE", false),
+                      _buildEditorToggle("EDIT NASKAH SCRIPT", true),
+                    ],
+                  ),
+                ),
+                // KONTROL TAMPILAN MC (Hijau)
+                Container(
+                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.green)),
+                  child: Row(
+                    children: [
+                      _buildMcModeToggle("MC LIHAT CUE PENUH", "cue"),
+                      _buildMcModeToggle("MC BACA SCRIPT", "script"),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+
+            // AREA KOTAK TEKS (Bergantung pada Editor FOH)
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -458,35 +509,19 @@ class _MasterScreenState extends State<MasterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(_isScriptMode ? "📝 MODE SCRIPT (MC Baca Sendiri)" : "🪧 MODE CUE (Layar Penuh FOH)", 
-                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                        Switch(
-                          value: _isScriptMode, 
-                          activeColor: Colors.blueAccent,
-                          onChanged: (val) {
-                            setState(() => _isScriptMode = val);
-                            _sendData("update");
-                          }
-                        )
-                      ],
-                    ),
-                    const Divider(color: Colors.grey),
-                    if (_isScriptMode) ...[
+                    if (_fohEditingScript) ...[
                       const Text("Ketik '===' untuk memisahkan halaman (Slide) Script.", style: TextStyle(color: Colors.orangeAccent)),
                       const SizedBox(height: 10),
                     ],
                     Expanded(
                       child: TextField(
-                        controller: _isScriptMode ? _scriptController : _cueController,
+                        controller: _fohEditingScript ? _scriptController : _cueController,
                         maxLines: null,
                         expands: true,
                         style: const TextStyle(fontSize: 22, color: Colors.white),
                         decoration: InputDecoration(
                           border: InputBorder.none, 
-                          hintText: _isScriptMode ? "Ketik teks PPT di sini..." : "Ketik instruksi layar penuh di sini..."
+                          hintText: _fohEditingScript ? "Ketik teks PPT di sini..." : "Ketik instruksi layar penuh di sini..."
                         ),
                       ),
                     ),
@@ -495,15 +530,15 @@ class _MasterScreenState extends State<MasterScreen> {
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.send, color: Colors.white),
                         label: Text(
-                          _isScriptMode ? "PUBLISH SCRIPT KE MC" : "UPDATE TEXT CUE", 
+                          _fohEditingScript ? "PUBLISH SCRIPT KE MC" : "UPDATE TEXT CUE", 
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
                         ),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20)),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20)),
                         onPressed: () {
                           _sendData("update");
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(_isScriptMode ? 'Script Berhasil Diperbarui!' : 'Teks Cue Berhasil Dikirim!'), 
+                              content: Text(_fohEditingScript ? 'Script Berhasil Diperbarui!' : 'Teks Cue Berhasil Dikirim!'), 
                               backgroundColor: Colors.green, 
                               duration: const Duration(seconds: 2)
                             )
@@ -517,6 +552,7 @@ class _MasterScreenState extends State<MasterScreen> {
             ),
             const SizedBox(height: 15),
             
+            // PANEL KONTROL WAKTU & GETAR
             Row(
               children: [
                 Expanded(
@@ -559,6 +595,7 @@ class _MasterScreenState extends State<MasterScreen> {
             ),
             const SizedBox(height: 15),
             
+            // TOMBOL CUE STATUS
             Row(
               children: [
                 _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
