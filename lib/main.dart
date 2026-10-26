@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
+import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -36,7 +37,103 @@ class CueSyncApp extends StatelessWidget {
 }
 
 // ==========================================
-// 1. HALAMAN PILIH PERAN
+// 1. KODE HTML UNTUK IPHONE / IPAD (SAFARI)
+// ==========================================
+const String _htmlContent = r'''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CueSync iOS</title>
+  <style>
+    body { margin:0; padding:0; background:#000; color:#fff; font-family:sans-serif; transition: background 0.3s; }
+    #cue-mode { display:flex; flex-direction:column; height:100vh; justify-content:center; align-items:center; text-align:center; padding: 20px; box-sizing: border-box;}
+    #script-mode { display:none; padding:80px 20px 40px 20px; }
+    #banner { position:fixed; top:-200px; left:10px; right:10px; padding:15px; border-radius:15px; transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); display:flex; justify-content:space-between; align-items:center; box-shadow:0 10px 20px rgba(0,0,0,0.8); border: 2px solid white; z-index: 100;}
+    .standby { background: linear-gradient(135deg, #f57f17, #fbc02d); color:#000 !important; }
+    .go { background: linear-gradient(135deg, #2e7d32, #00c853); color:#000 !important; }
+    .idle { background: #000; color:#fff !important; }
+    .text-display { font-size:10vw; font-weight:900; line-height: 1.2;}
+    .time-display { font-size:16vw; font-weight:900; margin-top:20px; font-variant-numeric: tabular-nums; }
+    #script-content { font-size: 7vw; line-height: 1.5; white-space: pre-wrap; font-weight: bold; }
+    .info { position: fixed; bottom: 10px; width: 100%; text-align: center; color: #555; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <!-- Pop-Up Banner untuk iOS saat Mode Script -->
+  <div id="banner" class="idle">
+    <div id="banner-text" style="font-size:6vw; font-weight:900;"></div>
+    <div id="banner-time" style="font-size:8vw; font-weight:900; font-variant-numeric: tabular-nums;"></div>
+  </div>
+
+  <!-- Tampilan Mode Cue Full Screen iOS -->
+  <div id="cue-mode" class="idle">
+     <div id="cue-text" class="text-display">Menyambungkan...</div>
+     <div id="cue-time" class="time-display"></div>
+     <div class="info">Atur Auto-Lock iPhone ke "Never" (Pengaturan > Tampilan)</div>
+  </div>
+
+  <!-- Tampilan Mode Script iOS -->
+  <div id="script-mode">
+     <div id="script-content"></div>
+  </div>
+
+  <script>
+    function connect() {
+      const ws = new WebSocket('ws://' + window.location.hostname + ':8080');
+      
+      ws.onopen = () => { document.getElementById('cue-text').innerText = "Koneksi iOS Siap!"; };
+
+      ws.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        
+        if (d.command === 'vibrate' && navigator.vibrate) {
+          navigator.vibrate([200, 100, 200]);
+        }
+
+        const isScript = d.mode === 'script';
+        document.getElementById('cue-mode').style.display = isScript ? 'none' : 'flex';
+        document.getElementById('script-mode').style.display = isScript ? 'block' : 'none';
+
+        let cls = 'idle';
+        if(d.status === 'standby') cls = 'standby';
+        else if(d.status === 'go') cls = 'go';
+
+        document.getElementById('cue-mode').className = cls;
+        document.getElementById('banner').className = cls;
+
+        if(isScript && d.status !== 'idle') {
+           document.getElementById('banner').style.top = '10px';
+        } else {
+           document.getElementById('banner').style.top = '-200px';
+        }
+
+        document.getElementById('cue-text').innerText = d.text;
+        document.getElementById('cue-time').innerText = d.time;
+        document.getElementById('banner-text').innerText = d.text;
+        document.getElementById('banner-time').innerText = d.time;
+        
+        if(isScript) {
+           const pages = d.script.split('===');
+           // Format pemisah halaman untuk Web
+           document.getElementById('script-content').innerHTML = pages.join('<br><hr style="border-color:#333; margin:40px 0; border-width: 2px;"><br>');
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('cue-text').innerText = "Terputus. Reconnecting...";
+        setTimeout(connect, 2000);
+      };
+    }
+    
+    connect();
+  </script>
+</body>
+</html>
+''';
+
+// ==========================================
+// 2. HALAMAN PILIH PERAN
 // ==========================================
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -105,7 +202,7 @@ class RoleSelectionScreen extends StatelessWidget {
 }
 
 // ==========================================
-// 2. HALAMAN MASTER (MAC / WINDOWS)
+// 3. HALAMAN MASTER (MAC / WINDOWS)
 // ==========================================
 class MasterScreen extends StatefulWidget {
   const MasterScreen({super.key});
@@ -114,7 +211,8 @@ class MasterScreen extends StatefulWidget {
 }
 
 class _MasterScreenState extends State<MasterScreen> {
-  HttpServer? _server;
+  HttpServer? _wsServer;
+  HttpServer? _webServer; // Server khusus untuk Web iOS
   final List<dynamic> _clients = [];
   String _localIp = 'Mencari IP...';
   
@@ -131,7 +229,7 @@ class _MasterScreenState extends State<MasterScreen> {
   @override
   void initState() {
     super.initState();
-    _startServer();
+    _startServers();
     _getLocalIp();
   }
 
@@ -146,13 +244,20 @@ class _MasterScreenState extends State<MasterScreen> {
     }
   }
 
-  void _startServer() async {
-    var handler = webSocketHandler((webSocket) {
+  void _startServers() async {
+    // Server 1: WebSocket untuk Komunikasi (Port 8080)
+    var wsHandler = webSocketHandler((webSocket) {
       _clients.add(webSocket);
       _sendData("update");
       webSocket.stream.listen((message) {}, onDone: () => _clients.remove(webSocket));
     });
-    _server = await shelf_io.serve(handler, '0.0.0.0', 8080);
+    _wsServer = await shelf_io.serve(wsHandler, '0.0.0.0', 8080);
+
+    // Server 2: HTTP Web Server untuk iPhone Safari (Port 8081)
+    var webHandler = (shelf.Request request) {
+      return shelf.Response.ok(_htmlContent, headers: {'content-type': 'text/html'});
+    };
+    _webServer = await shelf_io.serve(webHandler, '0.0.0.0', 8081);
   }
 
   void _startTimer() {
@@ -163,7 +268,7 @@ class _MasterScreenState extends State<MasterScreen> {
       _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (_timeInSeconds > 0) {
           setState(() => _timeInSeconds--);
-          _sendData("update"); // Timer otomatis kirim update per detik
+          _sendData("update");
         } else {
           timer.cancel();
         }
@@ -186,23 +291,16 @@ class _MasterScreenState extends State<MasterScreen> {
 
   void _changeStatus(String status) {
     _currentStatus = status;
-    _sendData("update"); // Tombol status otomatis terkirim
+    _sendData("update"); 
   }
 
-  // FOH menekan tombol ini agar MC menerima ketikan Script terbaru
-  void _publishScript() {
-    _sendData("update");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Script Berhasil Dikirim ke MC!'), backgroundColor: Colors.green, duration: Duration(seconds: 2))
-    );
-  }
-
+  // FUNGSI SEND GLOBAL 
   void _sendData(String command) {
     final message = jsonEncode({
       "mode": _isScriptMode ? "script" : "cue",
       "status": _currentStatus,
       "text": _cueController.text,
-      "script": _scriptController.text, // Script hanya terkirim saat fungsi ini dipanggil
+      "script": _scriptController.text,
       "time": _formattedTime,
       "timeRaw": _timeInSeconds,
       "command": command 
@@ -215,7 +313,8 @@ class _MasterScreenState extends State<MasterScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
-    _server?.close();
+    _wsServer?.close();
+    _webServer?.close();
     super.dispose();
   }
 
@@ -223,7 +322,14 @@ class _MasterScreenState extends State<MasterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('FOH Master - IP: $_localIp', style: const TextStyle(fontWeight: FontWeight.bold)), 
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('FOH Master Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text('Android IP: $_localIp   |   Buka di Safari iOS: http://$_localIp:8081', 
+                 style: const TextStyle(fontSize: 14, color: Colors.yellowAccent, fontWeight: FontWeight.bold)),
+          ],
+        ), 
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
       ),
@@ -231,7 +337,7 @@ class _MasterScreenState extends State<MasterScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // EDITOR SCRIPT / CUE
+            // EDITOR SCRIPT & CUE
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -260,28 +366,42 @@ class _MasterScreenState extends State<MasterScreen> {
                       const SizedBox(height: 10),
                     ],
                     
-                    // Kolom Input (Tidak ada onChanged agar tidak mengganggu MC)
+                    // KOLOM INPUT: Mengetik di sini TIDAK AKAN langsung terkirim ke MC
                     Expanded(
                       child: TextField(
                         controller: _isScriptMode ? _scriptController : _cueController,
                         maxLines: null,
                         expands: true,
                         style: const TextStyle(fontSize: 22, color: Colors.white),
-                        decoration: const InputDecoration(border: InputBorder.none, hintText: "Ketik di sini..."),
+                        decoration: InputDecoration(
+                          border: InputBorder.none, 
+                          hintText: _isScriptMode ? "Ketik teks PPT di sini..." : "Ketik instruksi layar penuh di sini..."
+                        ),
                       ),
                     ),
                     
-                    // TOMBOL PUBLISH SCRIPT
-                    if (_isScriptMode)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send, color: Colors.white),
-                          label: const Text("PUBLISH SCRIPT KE MC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20)),
-                          onPressed: _publishScript, // Mengirim data HANYA saat dipencet
+                    // TOMBOL UNIVERSAL: Baru terkirim ke MC jika tombol ini ditekan
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        label: Text(
+                          _isScriptMode ? "PUBLISH SCRIPT KE MC" : "UPDATE TEXT CUE", 
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
                         ),
-                      )
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20)),
+                        onPressed: () {
+                          _sendData("update");
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_isScriptMode ? 'Script Berhasil Diperbarui!' : 'Teks Cue Berhasil Dikirim!'), 
+                              backgroundColor: Colors.green, 
+                              duration: const Duration(seconds: 2)
+                            )
+                          );
+                        }, 
+                      ),
+                    )
                   ],
                 ),
               ),
@@ -351,10 +471,7 @@ class _MasterScreenState extends State<MasterScreen> {
     bool isActive = _currentStatus == status;
     return Expanded(
       child: InkWell(
-        onTap: () {
-          // Jika di mode Script, menekan Standby/Go akan langsung memunculkan Pop-up di MC tanpa mengubah script
-          _changeStatus(status);
-        },
+        onTap: () => _changeStatus(status),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           height: 90,
@@ -371,7 +488,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 3. HALAMAN CLIENT (ANDROID MC & TABLET)
+// 4. HALAMAN CLIENT (ANDROID MC / TABLET NATIVE)
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -390,7 +507,7 @@ class _ClientScreenState extends State<ClientScreen> {
   int _timeRaw = 0;
   
   bool _isConnected = false;
-  bool _isFlashing = false; // Status untuk Visual Flash (Kedip Layar)
+  bool _isFlashing = false; 
   
   final TextEditingController _ipController = TextEditingController();
   final PageController _pageController = PageController(); 
@@ -411,14 +528,13 @@ class _ClientScreenState extends State<ClientScreen> {
     }
   }
 
-  // FUNGSI PERHATIAN GANDA (Getar + Layar Kedip Merah)
   void _triggerAttention() async {
-    if (_isFlashing) return; // Cegah tumpuk jika FOH spam tombol
+    if (_isFlashing) return; 
     
     setState(() => _isFlashing = true);
     
     for (int i = 0; i < 8; i++) {
-      HapticFeedback.vibrate(); // Paksa motor hardware dasar menyala
+      HapticFeedback.vibrate(); 
       await Future.delayed(const Duration(milliseconds: 200));
     }
     
@@ -522,7 +638,6 @@ class _ClientScreenState extends State<ClientScreen> {
 
     Widget content;
 
-    // TAMPILAN MODE SCRIPT (MC)
     if (_mode == "script") {
       List<String> scriptPages = _script.split('===');
       if (scriptPages.isEmpty) scriptPages = ["..."];
@@ -556,7 +671,6 @@ class _ClientScreenState extends State<ClientScreen> {
                 },
               ),
               
-              // POP-UP BANNER MUNCUL SAAT FOH TEKAN STANDBY/GO
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 top: _status == "idle" ? -150 : 10,
@@ -584,7 +698,6 @@ class _ClientScreenState extends State<ClientScreen> {
         ),
       );
     } else {
-      // TAMPILAN MODE CUE LAMA
       content = Scaffold(
         body: AnimatedContainer(
           duration: const Duration(milliseconds: 400),
@@ -610,7 +723,6 @@ class _ClientScreenState extends State<ClientScreen> {
       );
     }
 
-    // EFEK VISUAL FLASH MENGELILINGI LAYAR JIKA TOMBOL PANGGIL MC DITEKAN
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
