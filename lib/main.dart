@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:shelf/shelf.dart' as shelf;
@@ -20,7 +21,7 @@ class CueSyncApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'CueSync Pro',
+      title: 'Agasta CueSync Pro',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF121212),
         elevatedButtonTheme: ElevatedButtonThemeData(
@@ -30,14 +31,153 @@ class CueSyncApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const RoleSelectionScreen(),
+      home: const LicenseGate(), // Aplikasi kini ditahan di Gerbang Lisensi terlebih dahulu
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
 // ==========================================
-// 1. KODE HTML UNTUK IPHONE / IPAD (SAFARI)
+// 1. GERBANG LISENSI (LOCK SCREEN)
+// ==========================================
+class LicenseGate extends StatefulWidget {
+  const LicenseGate({super.key});
+  @override
+  State<LicenseGate> createState() => _LicenseGateState();
+}
+
+class _LicenseGateState extends State<LicenseGate> {
+  String _hwId = "MEMUAT...";
+  bool _isUnlocked = false;
+  final TextEditingController _keyController = TextEditingController();
+
+  // KATA SANDI RAHASIA PABRIK (Harus sama persis dengan KeyGen)
+  final String _secretSalt = "AGASTA_PRO_2026_SECURE";
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLicenseStatus();
+  }
+
+  Future<void> _checkLicenseStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Cek apakah sudah pernah di-unlock sebelumnya
+    bool unlocked = prefs.getBool('is_unlocked') ?? false;
+    if (unlocked) {
+      setState(() => _isUnlocked = true);
+      return;
+    }
+
+    // Jika belum, ciptakan Hardware ID unik untuk perangkat ini (4 Digit)
+    String? savedHwId = prefs.getString('hardware_id');
+    if (savedHwId == null) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      Random rnd = Random();
+      savedHwId = String.fromCharCodes(Iterable.generate(4, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
+      await prefs.setString('hardware_id', savedHwId);
+    }
+    
+    setState(() => _hwId = savedHwId!);
+  }
+
+  // Mesin Pengecek Kecocokan Kunci
+  String _encryptHardwareId(String hwId) {
+    String raw = "$hwId-$_secretSalt";
+    String encoded = base64UrlEncode(utf8.encode(raw)).replaceAll('=', '').toUpperCase();
+    if (encoded.length >= 12) {
+      return "${encoded.substring(0,4)}-${encoded.substring(4,8)}-${encoded.substring(8,12)}";
+    }
+    return encoded;
+  }
+
+  void _verifyKey() async {
+    String inputKey = _keyController.text.trim().toUpperCase();
+    String validKey = _encryptHardwareId(_hwId);
+
+    if (inputKey == validKey) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_unlocked', true);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aktivasi Berhasil! Selamat Datang di Agasta Pro.'), backgroundColor: Colors.green)
+      );
+      
+      setState(() => _isUnlocked = true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kunci Lisensi Tidak Valid!'), backgroundColor: Colors.redAccent)
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Jika lisensi valid, langsung masuk ke Menu Utama (Role Selection)
+    if (_isUnlocked) return const RoleSelectionScreen();
+
+    // Jika belum valid, tahan di Halaman Lock Screen
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F0F0F),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(30.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline, size: 80, color: Colors.amber),
+              const SizedBox(height: 20),
+              const Text("AGASTA PRO SYSTEM", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.amber, letterSpacing: 2)),
+              const SizedBox(height: 10),
+              const Text("Aplikasi ini dilindungi oleh Hak Cipta.\nSilakan hubungi Administrator untuk Aktivasi.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 40),
+              
+              Container(
+                width: 350,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.amber.withOpacity(0.3))),
+                child: Column(
+                  children: [
+                    const Text("HARDWARE ID ANDA:", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    Text(_hwId, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 5)),
+                    const SizedBox(height: 30),
+                    
+                    TextField(
+                      controller: _keyController,
+                      textAlign: TextAlign.center,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2),
+                      decoration: InputDecoration(
+                        labelText: 'Masukkan Kunci Aktivasi',
+                        filled: true, fillColor: const Color(0xFF2A2A2A),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.vpn_key), label: const Text("AKTIFKAN APLIKASI", style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 55),
+                        backgroundColor: Colors.amber, foregroundColor: Colors.black,
+                      ),
+                      onPressed: _verifyKey,
+                    )
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 2. KODE HTML UNTUK IPHONE / IPAD (SAFARI)
 // ==========================================
 const String _htmlContent = r'''
 <!DOCTYPE html>
@@ -60,72 +200,49 @@ const String _htmlContent = r'''
   </style>
 </head>
 <body>
-  <!-- Pop-Up Banner untuk iOS saat Mode Script -->
   <div id="banner" class="idle">
     <div id="banner-text" style="font-size:6vw; font-weight:900;"></div>
     <div id="banner-time" style="font-size:8vw; font-weight:900; font-variant-numeric: tabular-nums;"></div>
   </div>
-
-  <!-- Tampilan Mode Cue Full Screen iOS -->
   <div id="cue-mode" class="idle">
      <div id="cue-text" class="text-display">Menyambungkan...</div>
      <div id="cue-time" class="time-display"></div>
      <div class="info">Atur Auto-Lock iPhone ke "Never" (Pengaturan > Tampilan)</div>
   </div>
-
-  <!-- Tampilan Mode Script iOS -->
   <div id="script-mode">
      <div id="script-content"></div>
   </div>
-
   <script>
     function connect() {
       const ws = new WebSocket('ws://' + window.location.hostname + ':8080');
-      
       ws.onopen = () => { document.getElementById('cue-text').innerText = "Koneksi iOS Siap!"; };
-
       ws.onmessage = (e) => {
         const d = JSON.parse(e.data);
-        
-        if (d.command === 'vibrate' && navigator.vibrate) {
-          navigator.vibrate([200, 100, 200]);
-        }
-
+        if (d.command === 'vibrate' && navigator.vibrate) navigator.vibrate([200, 100, 200]);
         const isScript = d.mode === 'script';
         document.getElementById('cue-mode').style.display = isScript ? 'none' : 'flex';
         document.getElementById('script-mode').style.display = isScript ? 'block' : 'none';
-
         let cls = 'idle';
         if(d.status === 'standby') cls = 'standby';
         else if(d.status === 'go') cls = 'go';
-
         document.getElementById('cue-mode').className = cls;
         document.getElementById('banner').className = cls;
-
-        if(isScript && d.status !== 'idle') {
-           document.getElementById('banner').style.top = '10px';
-        } else {
-           document.getElementById('banner').style.top = '-200px';
-        }
-
+        if(isScript && d.status !== 'idle') document.getElementById('banner').style.top = '10px';
+        else document.getElementById('banner').style.top = '-200px';
         document.getElementById('cue-text').innerText = d.text;
         document.getElementById('cue-time').innerText = d.time;
         document.getElementById('banner-text').innerText = d.text;
         document.getElementById('banner-time').innerText = d.time;
-        
         if(isScript) {
            const pages = d.script.split('===');
-           // Format pemisah halaman untuk Web
            document.getElementById('script-content').innerHTML = pages.join('<br><hr style="border-color:#333; margin:40px 0; border-width: 2px;"><br>');
         }
       };
-
       ws.onclose = () => {
         document.getElementById('cue-text').innerText = "Terputus. Reconnecting...";
         setTimeout(connect, 2000);
       };
     }
-    
     connect();
   </script>
 </body>
@@ -133,7 +250,7 @@ const String _htmlContent = r'''
 ''';
 
 // ==========================================
-// 2. HALAMAN PILIH PERAN
+// 3. HALAMAN PILIH PERAN (Menu Utama)
 // ==========================================
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -202,7 +319,7 @@ class RoleSelectionScreen extends StatelessWidget {
 }
 
 // ==========================================
-// 3. HALAMAN MASTER (MAC / WINDOWS)
+// 4. HALAMAN MASTER (MAC / WINDOWS)
 // ==========================================
 class MasterScreen extends StatefulWidget {
   const MasterScreen({super.key});
@@ -212,7 +329,7 @@ class MasterScreen extends StatefulWidget {
 
 class _MasterScreenState extends State<MasterScreen> {
   HttpServer? _wsServer;
-  HttpServer? _webServer; // Server khusus untuk Web iOS
+  HttpServer? _webServer; 
   final List<dynamic> _clients = [];
   String _localIp = 'Mencari IP...';
   
@@ -245,7 +362,6 @@ class _MasterScreenState extends State<MasterScreen> {
   }
 
   void _startServers() async {
-    // Server 1: WebSocket untuk Komunikasi (Port 8080)
     var wsHandler = webSocketHandler((webSocket) {
       _clients.add(webSocket);
       _sendData("update");
@@ -253,7 +369,6 @@ class _MasterScreenState extends State<MasterScreen> {
     });
     _wsServer = await shelf_io.serve(wsHandler, '0.0.0.0', 8080);
 
-    // Server 2: HTTP Web Server untuk iPhone Safari (Port 8081)
     var webHandler = (shelf.Request request) {
       return shelf.Response.ok(_htmlContent, headers: {'content-type': 'text/html'});
     };
@@ -294,7 +409,6 @@ class _MasterScreenState extends State<MasterScreen> {
     _sendData("update"); 
   }
 
-  // FUNGSI SEND GLOBAL 
   void _sendData(String command) {
     final message = jsonEncode({
       "mode": _isScriptMode ? "script" : "cue",
@@ -337,7 +451,6 @@ class _MasterScreenState extends State<MasterScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // EDITOR SCRIPT & CUE
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -365,8 +478,6 @@ class _MasterScreenState extends State<MasterScreen> {
                       const Text("Ketik '===' untuk memisahkan halaman (Slide) Script.", style: TextStyle(color: Colors.orangeAccent)),
                       const SizedBox(height: 10),
                     ],
-                    
-                    // KOLOM INPUT: Mengetik di sini TIDAK AKAN langsung terkirim ke MC
                     Expanded(
                       child: TextField(
                         controller: _isScriptMode ? _scriptController : _cueController,
@@ -379,8 +490,6 @@ class _MasterScreenState extends State<MasterScreen> {
                         ),
                       ),
                     ),
-                    
-                    // TOMBOL UNIVERSAL: Baru terkirim ke MC jika tombol ini ditekan
                     Align(
                       alignment: Alignment.centerRight,
                       child: ElevatedButton.icon(
@@ -408,7 +517,6 @@ class _MasterScreenState extends State<MasterScreen> {
             ),
             const SizedBox(height: 15),
             
-            // PANEL KONTROL WAKTU & GETAR
             Row(
               children: [
                 Expanded(
@@ -451,7 +559,6 @@ class _MasterScreenState extends State<MasterScreen> {
             ),
             const SizedBox(height: 15),
             
-            // TOMBOL CUE STATUS
             Row(
               children: [
                 _buildStatusButton("STANDBY", "standby", Colors.yellow[700]!, Colors.black),
@@ -488,7 +595,7 @@ class _MasterScreenState extends State<MasterScreen> {
 }
 
 // ==========================================
-// 4. HALAMAN CLIENT (ANDROID MC / TABLET NATIVE)
+// 5. HALAMAN CLIENT (ANDROID MC / TABLET NATIVE)
 // ==========================================
 class ClientScreen extends StatefulWidget {
   const ClientScreen({super.key});
@@ -532,33 +639,26 @@ class _ClientScreenState extends State<ClientScreen> {
     if (_isFlashing) return; 
     
     setState(() => _isFlashing = true);
-    
     for (int i = 0; i < 8; i++) {
       HapticFeedback.vibrate(); 
       await Future.delayed(const Duration(milliseconds: 200));
     }
-    
     if (mounted) setState(() => _isFlashing = false);
   }
 
   void _connect() async {
     if (_ipController.text.isEmpty) return;
-    
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_ip', _ipController.text);
 
     try {
       final wsUrl = Uri.parse('ws://${_ipController.text}:8080');
       _channel = WebSocketChannel.connect(wsUrl);
-      
       setState(() => _isConnected = true);
 
       _channel!.stream.listen((message) {
         final data = jsonDecode(message);
-        
-        if (data['command'] == 'vibrate') {
-          _triggerAttention();
-        }
+        if (data['command'] == 'vibrate') _triggerAttention();
 
         setState(() {
           _mode = data['mode'] ?? _mode;
@@ -658,10 +758,7 @@ class _ClientScreenState extends State<ClientScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            scriptPages[index].trim(),
-                            style: const TextStyle(fontSize: 40, color: Colors.white, height: 1.4),
-                          ),
+                          Text(scriptPages[index].trim(), style: const TextStyle(fontSize: 40, color: Colors.white, height: 1.4)),
                           const SizedBox(height: 50),
                           Center(child: Text("Halaman ${index + 1} dari ${scriptPages.length}", style: const TextStyle(color: Colors.grey, fontSize: 16))),
                         ],
@@ -670,7 +767,6 @@ class _ClientScreenState extends State<ClientScreen> {
                   );
                 },
               ),
-              
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 top: _status == "idle" ? -150 : 10,
