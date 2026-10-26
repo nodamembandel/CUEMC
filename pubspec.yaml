@@ -1,5 +1,5 @@
 name: cuesync
-description: Aplikasi Live Rundown FOH
+description: Agasta Show Management System
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -14,3 +14,22 @@ dependencies:
   web_socket_channel: ^2.4.4
   wakelock_plus: ^1.2.8
   shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: "^0.13.1"
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "icon.png"
+  macos:
+    generate: true
+    image_path: "icon.png"
+  windows:
+    generate: true
+    image_path: "icon.png"
+
+flutter:
+  uses-material-design: true
